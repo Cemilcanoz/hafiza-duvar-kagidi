@@ -1,0 +1,3 @@
+const assert=require('node:assert/strict');
+const {chromium}=require('playwright');
+(async()=>{const browser=await chromium.connectOverCDP('http://127.0.0.1:47832');try{const page=browser.contexts()[0].pages()[0];assert.match(page.url(),/host=native/);await page.locator('canvas').waitFor();assert.equal(await page.locator('body').getAttribute('class'),'wallpaper');const state=await page.evaluate(()=>fetch('/api/state').then(r=>r.json()));assert.equal(state.wallpaperActive,true);console.log(JSON.stringify({passed:true,url:page.url(),title:await page.title(),viewport:await page.evaluate(()=>({width:innerWidth,height:innerHeight})),wallpaperActive:state.wallpaperActive}));}finally{await browser.close();}})().catch(e=>{console.error(e);process.exitCode=1;});

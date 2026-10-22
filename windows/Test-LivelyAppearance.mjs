@@ -1,0 +1,37 @@
+import {chromium} from 'playwright';
+import assert from 'node:assert/strict';
+import fs from 'node:fs/promises';
+import path from 'node:path';
+const root=path.resolve(import.meta.dirname,'..'),browser=await chromium.connectOverCDP('http://127.0.0.1:47832');
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+try{
+ const page=browser.contexts().flatMap(c=>c.pages()).find(p=>p.url().includes('127.0.0.1:47831/?wallpaper=1'));
+ assert(page,'Actual Lively scene required');
+ await page.waitForFunction(()=>window.hafiza?.diagnostics().settled&&window.hafiza.diagnostics().imageReady);
+ const diag=()=>page.evaluate(()=>window.hafiza.diagnostics());
+ const original=await diag(),wasPaused=original.hostPaused;
+ if(wasPaused)await page.evaluate(()=>window.livelyWallpaperPlaybackChanged('{"IsPaused":false}'));
+ const before=await diag(),points=await page.evaluate(()=>window.hafiza.interactionPoints());
+ await sleep(1300);const after=await diag(),moved=await page.evaluate(()=>window.hafiza.interactionPoints());
+ assert.equal(after.appearance.motion,'organic');assert.equal(after.live,true);
+ assert(after.frames>before.frames+10);assert.equal(after.workerMessages,before.workerMessages);assert.deepEqual(after.positions,before.positions);
+ assert(moved.some((n,i)=>Math.hypot(n.x-points[i].x,n.y-points[i].y)>.05));
+ await page.locator('#appearance-toggle').click();
+ await page.screenshot({path:path.join(root,'runtime/acceptance/lively-organic-settings.png')});
+ assert(await page.locator('#style-select option[value="glow"]').count());assert(await page.locator('#style-select option[value="ink"]').count());
+ await page.locator('#close-appearance').click();
+ await page.evaluate(()=>window.livelyWallpaperPlaybackChanged('{"IsPaused":true}'));await sleep(100);const paused=await diag();await sleep(500);
+ assert.equal((await diag()).frames,paused.frames);assert.equal((await diag()).workerMessages,paused.workerMessages);
+ await page.evaluate(()=>window.livelyWallpaperPlaybackChanged('{"IsPaused":false}'));
+ const state=await fetch('http://127.0.0.1:47831/api/state').then(r=>r.json());
+ const mode=async value=>{const r=await fetch('http://127.0.0.1:47831/api/mode',{method:'POST',headers:{'Content-Type':'application/json','X-Control-Token':state.token},body:JSON.stringify({mode:value})});assert(r.ok);};
+ await mode('image');await page.waitForFunction(()=>window.hafiza.diagnostics().amount===1&&!window.hafiza.diagnostics().transitioning);await sleep(100);
+ const image=await diag();await sleep(550);assert.equal((await diag()).frames,image.frames);
+ assert.equal(await page.locator('#appearance-panel').isVisible(),false);assert.equal(await page.locator('#controls').isVisible(),false);
+ await page.screenshot({path:path.join(root,'runtime/acceptance/lively-organic-clean-photo.png')});
+ await mode('graph');await page.waitForFunction(()=>window.hafiza.diagnostics().amount===0&&!window.hafiza.diagnostics().transitioning);
+ assert.deepEqual((await diag()).positions,before.positions);
+ if(wasPaused)await page.evaluate(()=>window.livelyWallpaperPlaybackChanged('{"IsPaused":true}'));
+ const report={testedAt:new Date().toISOString(),scope:'Actual Lively WebView2 scene; host pause callback directly exercised, physical fullscreen not tested.',nodes:before.nodes,edges:before.edges,hostInitiallyPaused:wasPaused,organicFramesIn1_3Seconds:after.frames-before.frames,physicsMessagesDuringMotion:after.workerMessages-before.workerMessages,renderedNodesMove:true,anchorsStable:true,glowAndInkAvailable:true,pauseStopsDrawing:true,pauseStopsPhysics:true,photoStopsDrawing:true,photoControlsHidden:true,returnPreservesAnchors:true};
+ await fs.writeFile(path.join(root,'runtime/acceptance/lively-appearance-report.json'),JSON.stringify(report,null,2));console.log(JSON.stringify(report,null,2));
+}finally{await browser.close();}

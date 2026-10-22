@@ -1,0 +1,9 @@
+{
+  "id": "hafiza-wallpaper",
+  "name": "Hafıza Duvar Kâğıdı Bridge",
+  "version": "0.1.0",
+  "minAppVersion": "1.0.0",
+  "description": "Exports official link metadata to the local wallpaper bridge; never reads note bodies.",
+  "author": "Cemil",
+  "isDesktopOnly": true
+}
